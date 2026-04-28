@@ -1,6 +1,6 @@
 {
   "config_version": 1,
-  "api_base_url": "https://api.example.com",
+  "api_base_url": "https://api.unspace.com",
   "yard_id": "00000000-0000-0000-0000-000000000000",
   "watch_directory": "/var/lib/drone-dock/uploads",
   "mission_name_prefix": "Hextronics Dock",
@@ -13,5 +13,5 @@
   "heartbeat_file": "/tmp/drone-dock-agent.heartbeat",
   "heartbeat_interval_seconds": 15,
   "heartbeat_max_age_seconds": 120,
-  "api_bearer_token": ""
+  "api_key": ""
 }

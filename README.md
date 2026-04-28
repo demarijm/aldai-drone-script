@@ -1,7 +1,5 @@
 # drone-dock-agent
 
-`drone-dock-agent` is a Raspberry Pi-friendly watcher process for a Hextronics drone dock.
-
 It watches a local folder, and for each new video file it:
 
 1. Creates a mission via API route `POST /api/v1/missions/yards/{yardId}/missions`
@@ -10,10 +8,6 @@ It watches a local folder, and for each new video file it:
 4. Confirms upload via API route `POST /api/v1/videos/confirm`
 5. Associates the uploaded video to the mission via `PATCH /api/v1/missions/{missionId}/video`
 6. Triggers inference via `POST /api/v1/missions/{missionId}/trigger-ml-processing`
-
-This keeps the drone dock flow aligned with the same backend routes used by the app.
-
-Implementation note: runtime logic is intentionally consolidated in `src/drone_dock_agent/agent.py` (single file), while deployment settings live in the separate JSON config file.
 
 ## Install
 
@@ -47,9 +41,9 @@ The agent now reads a versioned config file to keep deployment settings centrali
 
 1. Copy `config/dock-agent.config.v1.json` to your host (for example `/etc/unspace/drone-dock-agent.config.json`).
 2. Fill in `api_base_url`, `yard_id`, `watch_directory`, and tuning values.
-3. Provide auth token either by:
-   - setting `api_bearer_token` in JSON, or
-   - setting env var `DRONE_DOCK_API_BEARER_TOKEN`.
+3. Provide your API key either by:
+   - setting `api_key` in JSON, or
+   - setting env var `DRONE_DOCK_API_KEY`.
 4. Optional health/liveness settings in JSON:
    - `heartbeat_file`
    - `heartbeat_interval_seconds`
@@ -60,7 +54,7 @@ Config schema version is enforced via `config_version` and currently supports `1
 ### Environment variables
 
 - `DRONE_DOCK_CONFIG_PATH` (optional, default `./drone-dock-agent.config.json`)
-- `DRONE_DOCK_API_BEARER_TOKEN` (optional fallback if token omitted from JSON)
+- `DRONE_DOCK_API_KEY` (optional fallback if key omitted from JSON)
 
 ## Run
 
