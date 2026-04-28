@@ -1,0 +1,1 @@
+# aldai-drone-script
