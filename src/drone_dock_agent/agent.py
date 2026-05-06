@@ -23,11 +23,8 @@ from watchdog.observers import Observer
 CONFIG_VERSION = 1
 DEFAULT_CONFIG_PATH = Path("./drone-dock-agent.config.json")
 
-CREATE_MISSION_PATH = "/api/v1/missions/yards/{yard_id}/missions"
 UPLOAD_URL_PATH = "/api/v1/videos/upload-url"
-CONFIRM_UPLOAD_PATH = "/api/v1/videos/confirm"
-SET_MISSION_VIDEO_PATH = "/api/v1/missions/{mission_id}/video"
-TRIGGER_INFERENCE_PATH = "/api/v1/missions/{mission_id}/trigger-ml-processing"
+INGEST_MISSION_PATH = "/api/v1/videos/ingest-mission"
 
 logger = logging.getLogger(__name__)
 
@@ -68,15 +65,6 @@ class UnspaceAPIClient:
             }
         )
 
-    def create_mission(self, mission_name: str) -> str:
-        response = self._request(
-            "POST",
-            CREATE_MISSION_PATH.format(yard_id=self._config.yard_id),
-            json={"name": mission_name},
-            timeout=30,
-        )
-        return response["id"]
-
     def generate_upload_url(self, file_path: Path) -> UploadUrlResult:
         response = self._request(
             "POST",
@@ -105,40 +93,38 @@ class UnspaceAPIClient:
             )
             response.raise_for_status()
 
-    def confirm_upload(self, s3_key: str, source_path: Path, mission_metadata: dict[str, Any]) -> None:
-        self._request(
-            "POST",
-            CONFIRM_UPLOAD_PATH,
-            json={
-                "yard_id": self._config.yard_id,
-                "s3_key": s3_key,
-                "metadata": {
-                    "source": "hextronics-drone-dock",
-                    "source_filename": source_path.name,
-                    "mission_metadata": mission_metadata,
-                },
+    def ingest_uploaded_mission(
+        self,
+        *,
+        s3_key: str,
+        source_path: Path,
+        mission_name: str,
+        mission_metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "s3_key": s3_key,
+            "name": mission_name,
+            "metadata": {
+                "source": "hextronics-drone-dock",
+                "source_filename": source_path.name,
+                "mission_metadata": mission_metadata,
             },
-            timeout=30,
-        )
+            "model_type": self._config.model_type,
+            "annotated_video": self._config.annotated_video,
+            "multi_track": self._config.multi_track,
+        }
 
-    def set_mission_video(self, mission_id: str, s3_key: str) -> None:
-        self._request(
-            "PATCH",
-            SET_MISSION_VIDEO_PATH.format(mission_id=mission_id),
-            json={"video_object_key": s3_key},
-            timeout=30,
-        )
+        if track_group := mission_metadata.get("track_group_designator"):
+            payload["track_group"] = track_group
 
-    def trigger_inference(self, mission_id: str, s3_key: str) -> dict[str, Any]:
+        track_label = _build_track_label(mission_metadata)
+        if track_label:
+            payload["track_label"] = track_label
+
         return self._request(
             "POST",
-            TRIGGER_INFERENCE_PATH.format(mission_id=mission_id),
-            json={
-                "video_s3_key": s3_key,
-                "model_type": self._config.model_type,
-                "annotated_video": self._config.annotated_video,
-                "multi_track": self._config.multi_track,
-            },
+            INGEST_MISSION_PATH,
+            json=payload,
             timeout=60,
         )
 
@@ -169,23 +155,23 @@ class FileProcessor:
 
         logger.info("Processing %s with mission metadata %s", file_path, mission_metadata)
 
-        mission_id = self._api_client.create_mission(mission_name=mission_name)
         upload = self._api_client.generate_upload_url(file_path=file_path)
         self._api_client.upload_file_to_s3(upload=upload, file_path=file_path)
-        self._api_client.confirm_upload(
+        ingest_result = self._api_client.ingest_uploaded_mission(
             s3_key=upload.s3_key,
             source_path=file_path,
+            mission_name=mission_name,
             mission_metadata=mission_metadata,
         )
-        self._api_client.set_mission_video(mission_id=mission_id, s3_key=upload.s3_key)
-        inference_result = self._api_client.trigger_inference(mission_id=mission_id, s3_key=upload.s3_key)
 
+        mission = ingest_result.get("mission", {})
+        ml_trigger = ingest_result.get("ml_trigger", {})
         logger.info(
-            "Completed flow for %s (mission=%s, s3_key=%s, inference=%s)",
+            "Completed ingest flow for %s (mission=%s, s3_key=%s, ml_trigger=%s)",
             file_path.name,
-            mission_id,
+            mission.get("id"),
             upload.s3_key,
-            inference_result,
+            ml_trigger,
         )
 
     def _wait_until_file_stable(self, file_path: Path) -> None:
@@ -315,6 +301,14 @@ def _load_mission_metadata(video_path: Path) -> dict[str, Any]:
     return metadata
 
 
+def _build_track_label(metadata: dict[str, Any]) -> str | None:
+    first_track = metadata.get("first_track_designator")
+    last_track = metadata.get("last_track_designator")
+    if first_track and last_track:
+        return f"{first_track}-{last_track}"
+    return str(first_track or last_track) if first_track or last_track else None
+
+
 def _build_mission_name(prefix: str, file_path: Path, metadata: dict[str, Any]) -> str:
     if metadata.get("kmz_found"):
         return (
@@ -339,6 +333,8 @@ def load_config() -> AgentConfig:
     ).strip()
     if not token:
         raise ValueError("Missing API key in config or DRONE_DOCK_API_KEY")
+    if not token.startswith("ysk_"):
+        raise ValueError("Drone ingest requires a yard API key starting with ysk_")
 
     include_extensions = raw_config.get("include_extensions", [".mp4", ".mov", ".mkv", ".avi"])
     if isinstance(include_extensions, str):
