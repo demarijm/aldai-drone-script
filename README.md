@@ -1,98 +1,86 @@
-# drone-dock-agent
+# unspace
 
-It watches a local folder, and for each new video file it:
+`unspace` is a Rust CLI foundation for the Unspace drone dock ingest agent. It is intended to run 24/7 on Ubuntu/Raspberry Pi docks, manage a versioned config file, run as a hardened systemd service, and provide the command surface needed for video ingest work.
 
-1. Requests an upload target via API route `POST /api/v1/videos/upload-url`
-2. Uploads the file to S3 via the returned pre-signed POST URL
-3. Creates the mission, verifies/records the uploaded video, and triggers ML via `POST /api/v1/videos/ingest-mission`
+## Implemented foundation
 
-The agent is intended to run with a yard API key (`ysk_...`). The yard is still supplied to `upload-url` because that route requires it, but the ingest step resolves the yard from the API key and does not send `yard_id` in the ingest body.
+- Clap command routing for `install`, `uninstall`, `watch`, `status`, `logs`, `update`, `healthcheck`, `config show`, and `config set`.
+- Versioned JSON config at `/etc/unspace/config.json` by default.
+- `UNSPACE_CONFIG_PATH` config path override.
+- `UNSPACE_API_KEY` secret override.
+- API key validation requiring a `ysk_` prefix.
+- `config show` redacts the API key.
+- `config set <key> <value>` validates and writes the config, then sends `SIGHUP` to `/var/run/unspace.pid` when the service is running.
+- `watch` writes `/var/run/unspace.pid`, writes the local heartbeat file, catches `SIGHUP`, and reloads config without restarting.
+- `install` writes the initial config from `--api-key`, `--yard-id`, and `--dock-id`, creates Unspace working directories, writes a hardened systemd unit, and starts the service.
+- `healthcheck` validates the watch directory, heartbeat freshness, and API `/health` reachability.
+- Tag-push CI builds stripped Linux musl binaries for x86_64 and aarch64.
 
-## Install
+The previous Python prototype is still present under `src/drone_dock_agent/` for reference while the Rust CLI is built out.
 
-```bash
-cd packages/drone-dock-agent
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-
-## KMZ/WPML metadata support
-
-The agent reads mission metadata from KMZ files using this naming convention:
-
-`YardName_TrackGroup_FirstTrack_LastTrack.kmz`
-
-Example: `Norris_GroupA_T01_T06.kmz`.
-
-For each processed video, the agent will:
-
-- Prefer a same-stem KMZ (e.g., `mission-001.mp4` + `mission-001.kmz`)
-- Otherwise fall back to the first `.kmz` in the same directory
-- Parse mission fields from the KMZ filename
-- Open the KMZ and read WPML (`waylines.wpml`/`.wpml`) to extract drone heading
-- Pass this metadata through the `/api/v1/videos/ingest-mission` payload metadata
-- Send `track_group` from the KMZ track group and `track_label` from the first/last track designators when available
-
-## Configuration (versioned JSON)
-
-The agent now reads a versioned config file to keep deployment settings centralized and DRY.
-
-1. Copy `config/dock-agent.config.v1.json` to your host (for example `/etc/unspace/drone-dock-agent.config.json`).
-2. Fill in `api_base_url`, `yard_id`, `watch_directory`, and tuning values.
-3. Provide your yard API key (`ysk_...`) either by:
-   - setting `api_key` in JSON, or
-   - setting env var `DRONE_DOCK_API_KEY`.
-4. Optional health/liveness settings in JSON:
-   - `heartbeat_file`
-   - `heartbeat_interval_seconds`
-   - `heartbeat_max_age_seconds`
-
-Config schema version is enforced via `config_version` and currently supports `1`.
-
-### Environment variables
-
-- `DRONE_DOCK_CONFIG_PATH` (optional, default `./drone-dock-agent.config.json`)
-- `DRONE_DOCK_API_KEY` (optional fallback if key omitted from JSON; must be a `ysk_` yard API key)
-
-## Run
+## Build and test
 
 ```bash
-drone-dock-agent
+cargo test
+cargo build --release
 ```
 
-## Notes for Raspberry Pi
+## Configuration
 
-- Run this process under `systemd` for automatic restart on boot.
-- Ensure the watch directory and config/token are readable by the service user.
-- Keep the Pi clock synced (NTP), since expiring auth tokens and pre-signed URL windows are time-sensitive.
+Default path: `/etc/unspace/config.json`
 
-## Systemd service (managed runtime + restart + logs + health checks)
-
-Use the provided unit file:
-
-- `systemd/drone-dock-agent.service`
-
-This service includes:
-
-- restart policy (`Restart=always`, `RestartSec=10`)
-- journald logs (`journalctl -u drone-dock-agent -f`)
-- environment variables (`DRONE_DOCK_CONFIG_PATH`, `PYTHONUNBUFFERED`)
-- health checks using `drone-dock-agent --healthcheck` in `ExecStartPre` and `ExecStartPost`
-
-Health check verifies:
-
-- watch directory exists/readable
-- API `/health` endpoint is reachable
-- heartbeat file freshness when present
-
-Install example:
+Override path:
 
 ```bash
-sudo cp packages/drone-dock-agent/systemd/drone-dock-agent.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable drone-dock-agent
-sudo systemctl start drone-dock-agent
-sudo systemctl status drone-dock-agent
+export UNSPACE_CONFIG_PATH=/tmp/unspace.config.json
 ```
+
+Override API key without storing it in JSON:
+
+```bash
+export UNSPACE_API_KEY=ysk_KEY
+```
+
+Example config:
+
+```json
+{
+  "config_version": 1,
+  "api_base_url": "https://api.unspace.com",
+  "api_key": "",
+  "yard_id": "YARD_1",
+  "dock_id": "DOCK_42",
+  "watch_dir": "/var/lib/unspace/uploads",
+  "watch_extensions": [".mp4", ".mov", ".avi", ".mkv"],
+  "stable_check_interval_secs": 1.0,
+  "stable_required_checks": 3,
+  "mission_name_prefix": "Hextronics Dock",
+  "model_type": "coupler_genie",
+  "annotated_video": true,
+  "multi_track": false,
+  "poll_interval_secs": 60,
+  "max_queue_size_mb": 500,
+  "heartbeat_file": "/tmp/unspace.heartbeat",
+  "heartbeat_interval_secs": 15,
+  "heartbeat_max_age_secs": 120,
+  "log_level": "info"
+}
+```
+
+## CLI examples
+
+```bash
+unspace --version
+unspace install --api-key ysk_KEY --yard-id YARD_1 --dock-id DOCK_42
+unspace config show
+unspace config set watch_dir /mnt/drone-footage
+unspace config set watch_extensions .mp4,.mov
+unspace config set poll_interval_secs 120
+unspace healthcheck
+unspace status
+unspace logs
+```
+
+## Notes
+
+The upload pipeline, KMZ/WPML metadata extraction, polling command channel, and full self-update flow are planned next. The `update` command is intentionally scaffolded and returns a clear not-implemented error rather than silently doing partial work.
