@@ -1,5 +1,5 @@
 use crate::{CONFIG_VERSION, DEFAULT_CONFIG_PATH, UPLOAD_DIR};
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::env;
@@ -15,19 +15,9 @@ pub struct AgentConfig {
     pub yard_id: String,
     pub dock_id: String,
     pub watch_dir: PathBuf,
-    pub watch_extensions: Vec<String>,
-    pub stable_check_interval_secs: f64,
-    pub stable_required_checks: u32,
-    pub mission_name_prefix: String,
-    pub model_type: String,
-    pub annotated_video: bool,
-    pub multi_track: bool,
-    pub poll_interval_secs: u64,
-    pub max_queue_size_mb: u64,
     pub heartbeat_file: PathBuf,
     pub heartbeat_interval_secs: u64,
     pub heartbeat_max_age_secs: u64,
-    pub log_level: String,
 }
 
 impl Default for AgentConfig {
@@ -39,22 +29,9 @@ impl Default for AgentConfig {
             yard_id: String::new(),
             dock_id: String::new(),
             watch_dir: PathBuf::from(UPLOAD_DIR),
-            watch_extensions: vec![".mp4", ".mov", ".avi", ".mkv"]
-                .into_iter()
-                .map(String::from)
-                .collect(),
-            stable_check_interval_secs: 1.0,
-            stable_required_checks: 3,
-            mission_name_prefix: "Hextronics Dock".to_string(),
-            model_type: "coupler_genie".to_string(),
-            annotated_video: true,
-            multi_track: false,
-            poll_interval_secs: 60,
-            max_queue_size_mb: 500,
             heartbeat_file: PathBuf::from("/tmp/unspace.heartbeat"),
             heartbeat_interval_secs: 15,
             heartbeat_max_age_secs: 120,
-            log_level: "info".to_string(),
         }
     }
 }
@@ -103,18 +80,8 @@ impl AgentConfig {
         if !self.api_key.starts_with("ysk_") {
             bail!("API key must start with ysk_");
         }
-        validate_positive_float(
-            "stable_check_interval_secs",
-            self.stable_check_interval_secs,
-        )?;
-        validate_nonzero(
-            "stable_required_checks",
-            u64::from(self.stable_required_checks),
-        )?;
-        validate_nonzero("poll_interval_secs", self.poll_interval_secs)?;
         validate_nonzero("heartbeat_interval_secs", self.heartbeat_interval_secs)?;
         validate_nonzero("heartbeat_max_age_secs", self.heartbeat_max_age_secs)?;
-        self.watch_extensions = normalize_extensions(&self.watch_extensions)?;
         Ok(())
     }
 
@@ -171,56 +138,11 @@ pub fn apply_config_value(config: &mut AgentConfig, key: &str, value: &str) -> R
         "yard_id" => config.yard_id = value.to_string(),
         "dock_id" => config.dock_id = value.to_string(),
         "watch_dir" => config.watch_dir = PathBuf::from(value),
-        "watch_extensions" => config.watch_extensions = parse_extensions(value),
-        "stable_check_interval_secs" => config.stable_check_interval_secs = value.parse()?,
-        "stable_required_checks" => config.stable_required_checks = value.parse()?,
-        "mission_name_prefix" => config.mission_name_prefix = value.to_string(),
-        "model_type" => config.model_type = value.to_string(),
-        "annotated_video" => config.annotated_video = parse_bool(value)?,
-        "multi_track" => config.multi_track = parse_bool(value)?,
-        "poll_interval_secs" => config.poll_interval_secs = value.parse()?,
-        "max_queue_size_mb" => config.max_queue_size_mb = value.parse()?,
         "heartbeat_file" => config.heartbeat_file = PathBuf::from(value),
         "heartbeat_interval_secs" => config.heartbeat_interval_secs = value.parse()?,
         "heartbeat_max_age_secs" => config.heartbeat_max_age_secs = value.parse()?,
-        "log_level" => config.log_level = value.to_string(),
         "config_version" => bail!("config_version cannot be changed with config set"),
         _ => bail!("unsupported config key '{key}'"),
-    }
-    Ok(())
-}
-
-pub fn normalize_extensions(values: &[String]) -> Result<Vec<String>> {
-    let extensions: Vec<String> = values
-        .iter()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-        .map(|value| format!(".{}", value.trim_start_matches('.').to_ascii_lowercase()))
-        .collect();
-    if extensions.is_empty() {
-        bail!("watch_extensions must include at least one extension");
-    }
-    Ok(extensions)
-}
-
-fn parse_extensions(value: &str) -> Vec<String> {
-    value
-        .split(',')
-        .map(|part| part.trim().to_string())
-        .collect()
-}
-
-fn parse_bool(value: &str) -> Result<bool> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "y" | "on" => Ok(true),
-        "0" | "false" | "no" | "n" | "off" => Ok(false),
-        _ => Err(anyhow!("expected a boolean value")),
-    }
-}
-
-fn validate_positive_float(field: &str, value: f64) -> Result<()> {
-    if value <= 0.0 {
-        bail!("{field} must be greater than 0");
     }
     Ok(())
 }
@@ -243,15 +165,6 @@ mod tests {
             "yard".to_string(),
             "dock".to_string(),
         )
-    }
-
-    #[test]
-    fn normalize_extensions_lowercases_and_adds_dots() {
-        let values = vec!["MP4".to_string(), ".Mov".to_string(), " avi ".to_string()];
-        assert_eq!(
-            normalize_extensions(&values).unwrap(),
-            vec![".mp4", ".mov", ".avi"]
-        );
     }
 
     #[test]
@@ -282,11 +195,14 @@ mod tests {
     }
 
     #[test]
-    fn config_value_set_parses_extensions() {
+    fn config_value_set_rejects_removed_future_fields() {
         let mut config = valid_config();
-        apply_config_value(&mut config, "watch_extensions", ".MP4,mov").unwrap();
-        config.validate_with_api_key_override(None).unwrap();
-        assert_eq!(config.watch_extensions, vec![".mp4", ".mov"]);
+        assert!(
+            apply_config_value(&mut config, "future_upload_field", "value")
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported config key")
+        );
     }
 
     #[test]

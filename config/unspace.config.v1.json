@@ -5,17 +5,7 @@
   "yard_id": "",
   "dock_id": "",
   "watch_dir": "/var/lib/unspace/uploads",
-  "watch_extensions": [".mp4", ".mov", ".avi", ".mkv"],
-  "stable_check_interval_secs": 1.0,
-  "stable_required_checks": 3,
-  "mission_name_prefix": "Hextronics Dock",
-  "model_type": "coupler_genie",
-  "annotated_video": true,
-  "multi_track": false,
-  "poll_interval_secs": 60,
-  "max_queue_size_mb": 500,
   "heartbeat_file": "/tmp/unspace.heartbeat",
   "heartbeat_interval_secs": 15,
-  "heartbeat_max_age_secs": 120,
-  "log_level": "info"
+  "heartbeat_max_age_secs": 120
 }

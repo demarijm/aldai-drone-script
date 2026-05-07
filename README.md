@@ -11,7 +11,7 @@
 - API key validation requiring a `ysk_` prefix.
 - `config show` redacts the API key.
 - `config set <key> <value>` validates and writes the config, then sends `SIGHUP` to `/var/run/unspace.pid` when the service is running.
-- `watch` writes `/var/run/unspace.pid`, writes the local heartbeat file, catches `SIGHUP`, and reloads config without restarting.
+- `watch` writes `/var/run/unspace.pid`, writes the local heartbeat file, catches `SIGHUP`, and reloads the currently used config without restarting.
 - `install` writes the initial config from `--api-key`, `--yard-id`, and `--dock-id`, creates Unspace working directories, writes a hardened systemd unit, and starts the service.
 - `healthcheck` validates the watch directory, heartbeat freshness, and API `/health` reachability.
 - Tag-push CI builds stripped Linux musl binaries for x86_64 and aarch64.
@@ -51,19 +51,9 @@ Example config:
   "yard_id": "YARD_1",
   "dock_id": "DOCK_42",
   "watch_dir": "/var/lib/unspace/uploads",
-  "watch_extensions": [".mp4", ".mov", ".avi", ".mkv"],
-  "stable_check_interval_secs": 1.0,
-  "stable_required_checks": 3,
-  "mission_name_prefix": "Hextronics Dock",
-  "model_type": "coupler_genie",
-  "annotated_video": true,
-  "multi_track": false,
-  "poll_interval_secs": 60,
-  "max_queue_size_mb": 500,
   "heartbeat_file": "/tmp/unspace.heartbeat",
   "heartbeat_interval_secs": 15,
-  "heartbeat_max_age_secs": 120,
-  "log_level": "info"
+  "heartbeat_max_age_secs": 120
 }
 ```
 
@@ -74,8 +64,6 @@ unspace --version
 unspace install --api-key ysk_KEY --yard-id YARD_1 --dock-id DOCK_42
 unspace config show
 unspace config set watch_dir /mnt/drone-footage
-unspace config set watch_extensions .mp4,.mov
-unspace config set poll_interval_secs 120
 unspace healthcheck
 unspace status
 unspace logs
@@ -83,4 +71,4 @@ unspace logs
 
 ## Notes
 
-The upload pipeline, KMZ/WPML metadata extraction, polling command channel, and full self-update flow are planned next. The `update` command is intentionally scaffolded and returns a clear not-implemented error rather than silently doing partial work.
+The config intentionally contains only fields used by the current scaffold: API identity, watch directory, and local heartbeat/healthcheck settings. Upload pipeline fields such as video extension filters, mission naming, model options, queue limits, and polling intervals will be added when those features are implemented. The `update` command is intentionally scaffolded and returns a clear not-implemented error rather than silently doing partial work.
