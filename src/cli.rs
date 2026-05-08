@@ -1,7 +1,7 @@
-use crate::DEFAULT_CONFIG_PATH;
 use crate::config::{apply_config_value, config_path, load_config, load_config_from, write_config};
 use crate::health;
 use crate::service::{self, InstallOptions};
+use crate::{DEFAULT_CONFIG_PATH, SYSTEMD_UNIT_NAME};
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
@@ -9,7 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "unspace",
+    name = "unspace-dock",
     version = env!("CARGO_PKG_VERSION"),
     about = "Unspace drone dock ingest agent"
 )]
@@ -83,8 +83,8 @@ fn run_from(cli: Cli) -> Result<()> {
         }),
         CommandKind::Uninstall => service::uninstall(),
         CommandKind::Watch => service::watch(),
-        CommandKind::Status => service::exec_system("systemctl", &["status", "unspace"]),
-        CommandKind::Logs => service::exec_system("journalctl", &["-u", "unspace", "-f"]),
+        CommandKind::Status => service::exec_system("systemctl", &["status", SYSTEMD_UNIT_NAME]),
+        CommandKind::Logs => service::exec_system("journalctl", &["-u", SYSTEMD_UNIT_NAME, "-f"]),
         CommandKind::Update(args) => update(args),
         CommandKind::Healthcheck => health::healthcheck(),
         CommandKind::Config { command } => match command {

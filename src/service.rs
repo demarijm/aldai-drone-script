@@ -1,8 +1,12 @@
 use crate::config::{AgentConfig, config_path, load_config, write_config};
-use crate::{PID_FILE, QUEUE_DIR, SYSTEMD_UNIT_PATH, UPLOAD_DIR};
+use crate::{
+    BIN_INSTALL_PATH, PID_FILE, QUEUE_DIR, STATE_DIR, SYSTEMD_UNIT_NAME, SYSTEMD_UNIT_PATH,
+    UPLOAD_DIR,
+};
 use anyhow::{Context, Result, bail};
-use signal_hook::consts::signal::SIGHUP;
+use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGTERM};
 use signal_hook::flag as signal_flag;
+use std::env;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -25,44 +29,57 @@ pub fn install(options: InstallOptions) -> Result<()> {
     config.validate()?;
     write_config(&options.config_path, &config)?;
 
+    fs::create_dir_all(STATE_DIR).context("failed to create state directory")?;
     fs::create_dir_all(UPLOAD_DIR).context("failed to create upload directory")?;
     fs::create_dir_all(QUEUE_DIR).context("failed to create queue directory")?;
     create_service_user_best_effort();
     let _ = Command::new("chown")
-        .args(["-R", "unspace:unspace", "/var/lib/unspace"])
+        .args(["-R", "unspace:unspace", STATE_DIR])
         .status();
 
     fs::write(SYSTEMD_UNIT_PATH, systemd_unit(&options.config_path))
         .context("failed to write systemd unit")?;
     exec_system("systemctl", &["daemon-reload"])?;
-    exec_system("systemctl", &["enable", "--now", "unspace"])?;
-    println!("Unspace service installed and started.");
+    exec_system("systemctl", &["enable", "--now", SYSTEMD_UNIT_NAME])?;
+    println!("unspace-dock service installed and started.");
     Ok(())
 }
 
 pub fn uninstall() -> Result<()> {
-    let _ = Command::new("systemctl").args(["stop", "unspace"]).status();
     let _ = Command::new("systemctl")
-        .args(["disable", "unspace"])
+        .args(["stop", SYSTEMD_UNIT_NAME])
+        .status();
+    let _ = Command::new("systemctl")
+        .args(["disable", SYSTEMD_UNIT_NAME])
         .status();
     remove_if_exists(Path::new(SYSTEMD_UNIT_PATH))?;
     remove_if_exists(&config_path())?;
-    remove_if_exists(Path::new(PID_FILE))?;
+    remove_if_exists(&pid_file_path())?;
     exec_system("systemctl", &["daemon-reload"])?;
-    println!("Unspace service uninstalled.");
+    println!("unspace-dock service uninstalled.");
     Ok(())
 }
 
 pub fn watch() -> Result<()> {
     let mut config = load_config()?;
-    write_pid_file()?;
+    let pid_path = pid_file_path();
+    write_pid_file(&pid_path)?;
     let reload = Arc::new(AtomicBool::new(false));
+    let shutdown = Arc::new(AtomicBool::new(false));
     signal_flag::register(SIGHUP, Arc::clone(&reload))
         .context("failed to register SIGHUP handler")?;
-    info!(watch_dir = %config.watch_dir.display(), "watch service started");
+    signal_flag::register(SIGTERM, Arc::clone(&shutdown))
+        .context("failed to register SIGTERM handler")?;
+    signal_flag::register(SIGINT, Arc::clone(&shutdown))
+        .context("failed to register SIGINT handler")?;
+    info!(
+        watch_dir = %config.watch_dir.display(),
+        pid_file = %pid_path.display(),
+        "watch service started"
+    );
     let mut heartbeat_elapsed = config.heartbeat_interval_secs;
 
-    loop {
+    while !shutdown.load(Ordering::Relaxed) {
         if reload.swap(false, Ordering::Relaxed) {
             match load_config() {
                 Ok(new_config) => {
@@ -83,10 +100,20 @@ pub fn watch() -> Result<()> {
         thread::sleep(Duration::from_secs(1));
         heartbeat_elapsed += 1;
     }
+
+    info!("watch service shutting down");
+    let _ = remove_if_exists(&pid_path);
+    Ok(())
+}
+
+pub fn pid_file_path() -> PathBuf {
+    env::var("UNSPACE_PID_FILE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(PID_FILE))
 }
 
 pub fn signal_running_service() -> Result<bool> {
-    signal_running_service_from(Path::new(PID_FILE))
+    signal_running_service_from(&pid_file_path())
 }
 
 pub fn signal_running_service_from(pid_file: &Path) -> Result<bool> {
@@ -119,7 +146,7 @@ pub fn write_heartbeat(path: &Path) -> Result<()> {
 pub fn systemd_unit(config_path: &Path) -> String {
     format!(
         r#"[Unit]
-Description=Unspace Drone Dock CLI
+Description=Unspace Drone Dock Agent
 After=network-online.target
 Wants=network-online.target
 
@@ -127,28 +154,33 @@ Wants=network-online.target
 Type=simple
 User=unspace
 Group=unspace
-Environment=UNSPACE_CONFIG_PATH={}
-ExecStartPre=/usr/local/bin/unspace healthcheck
-ExecStart=/usr/local/bin/unspace watch
-ExecStartPost=/usr/local/bin/unspace healthcheck
+RuntimeDirectory=unspace
+RuntimeDirectoryMode=0755
+StateDirectory=unspace
+StateDirectoryMode=0755
+Environment=UNSPACE_CONFIG_PATH={config_path}
+PIDFile={pid_file}
+ExecStart={bin} watch
 Restart=always
 RestartSec=5
 StartLimitIntervalSec=300
 StartLimitBurst=5
-WatchdogSec=60
+KillSignal=SIGTERM
+TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/tmp /var/lib/unspace/uploads /var/lib/unspace/queue
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=unspace
+SyslogIdentifier=unspace-dock
 
 [Install]
 WantedBy=multi-user.target
 "#,
-        config_path.display()
+        config_path = config_path.display(),
+        pid_file = PID_FILE,
+        bin = BIN_INSTALL_PATH,
     )
 }
 
@@ -163,8 +195,13 @@ pub fn exec_system(program: &str, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn write_pid_file() -> Result<()> {
-    fs::write(PID_FILE, std::process::id().to_string()).context("failed to write PID file")
+fn write_pid_file(path: &Path) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create PID directory {}", parent.display()))?;
+    }
+    fs::write(path, std::process::id().to_string())
+        .with_context(|| format!("failed to write PID file {}", path.display()))
 }
 
 fn remove_if_exists(path: &Path) -> Result<()> {
@@ -204,10 +241,39 @@ mod tests {
         assert!(unit.contains("Environment=UNSPACE_CONFIG_PATH=/tmp/unspace-config.json"));
         assert!(unit.contains("NoNewPrivileges=true"));
         assert!(unit.contains("ProtectSystem=full"));
-        assert!(
-            unit.contains("ReadWritePaths=/tmp /var/lib/unspace/uploads /var/lib/unspace/queue")
-        );
-        assert!(unit.contains("ExecStart=/usr/local/bin/unspace watch"));
+        assert!(unit.contains("RuntimeDirectory=unspace"));
+        assert!(unit.contains("StateDirectory=unspace"));
+        assert!(unit.contains("PIDFile=/run/unspace/unspace-dock.pid"));
+        assert!(unit.contains("ExecStart=/usr/local/bin/unspace-dock watch"));
+        assert!(unit.contains("SyslogIdentifier=unspace-dock"));
+        assert!(!unit.contains("WatchdogSec"));
+        assert!(!unit.contains("ExecStartPre"));
+        assert!(!unit.contains("ExecStartPost"));
+    }
+
+    #[test]
+    fn pid_file_path_respects_environment_override() {
+        // Cargo runs tests in parallel inside one process; serialize env mutation
+        // by isolating the override and immediately reading it back.
+        let original = env::var("UNSPACE_PID_FILE").ok();
+        unsafe {
+            env::set_var("UNSPACE_PID_FILE", "/tmp/unspace-pid-override.pid");
+        }
+        let observed = pid_file_path();
+        match original {
+            Some(value) => unsafe { env::set_var("UNSPACE_PID_FILE", value) },
+            None => unsafe { env::remove_var("UNSPACE_PID_FILE") },
+        }
+        assert_eq!(observed, Path::new("/tmp/unspace-pid-override.pid"));
+    }
+
+    #[test]
+    fn write_pid_file_creates_parent_and_records_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/pid");
+        write_pid_file(&path).unwrap();
+        let recorded: u32 = fs::read_to_string(&path).unwrap().trim().parse().unwrap();
+        assert_eq!(recorded, std::process::id());
     }
 
     #[test]
