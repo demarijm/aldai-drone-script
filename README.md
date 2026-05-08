@@ -18,6 +18,22 @@
 
 The previous Python prototype is still present under `src/drone_dock_agent/` for reference while the Rust CLI is built out.
 
+## Python prototype parity
+
+No. The Rust CLI is a deployment and service-management scaffold, not a 1:1 port of the Python prototype yet. The Rust implementation currently covers CLI routing, config validation/redaction, systemd install scaffolding, PID/heartbeat handling, SIGHUP config reload, and health checks.
+
+The Python prototype still contains ingest-agent behavior that has not been ported to Rust yet:
+
+- filesystem event watching and startup backfill
+- video extension filtering and file stability checks
+- presigned upload URL requests and S3 POST uploads
+- ingest-mission API calls
+- KMZ resolution and filename metadata parsing
+- WPML heading extraction from KMZ archives
+- mission name, `track_group`, and `track_label` generation
+
+Keep `src/drone_dock_agent/` as the functional reference implementation until those features are ported.
+
 ## Build and test
 
 ```bash
