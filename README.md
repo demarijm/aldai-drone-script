@@ -8,10 +8,28 @@ It watches a local folder, and for each new video file it:
 
 The agent is intended to run with a yard API key (`ysk_...`). The yard is still supplied to `upload-url` because that route requires it, but the ingest step resolves the yard from the API key and does not send `yard_id` in the ingest body.
 
-## Install
+## Install from a URL
+
+A dock can be installed and started with three terminal commands:
 
 ```bash
-cd packages/drone-dock-agent
+curl -fsSL https://raw.githubusercontent.com/unspacellc/aldai-drone-script/main/scripts/install.sh | bash
+sudo unspace install --api-key ysk_KEY --yard-id YARD_1 --dock-id DOCK_42
+sudo unspace status
+```
+
+The curl command installs the `unspace` CLI and agent into `/opt/unspace/drone-dock-agent`. The `unspace install` command writes `/etc/unspace/drone-dock-agent.config.json`, installs/enables the `drone-dock-agent` systemd service, starts it, and stores the supplied dock ID in the ingest metadata for uploaded missions.
+
+To install from a branch, tag, fork, or release artifact, override the package URL before running the installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/unspacellc/aldai-drone-script/main/scripts/install.sh | \
+  UNSPACE_AGENT_PACKAGE_URL=https://github.com/unspacellc/aldai-drone-script/archive/refs/heads/main.zip bash
+```
+
+### Development install
+
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -40,7 +58,7 @@ For each processed video, the agent will:
 The agent now reads a versioned config file to keep deployment settings centralized and DRY.
 
 1. Copy `config/dock-agent.config.v1.json` to your host (for example `/etc/unspace/drone-dock-agent.config.json`).
-2. Fill in `api_base_url`, `yard_id`, `watch_directory`, and tuning values.
+2. Fill in `api_base_url`, `yard_id`, `dock_id`, `watch_directory`, and tuning values.
 3. Provide your yard API key (`ysk_...`) either by:
    - setting `api_key` in JSON, or
    - setting env var `DRONE_DOCK_API_KEY`.
@@ -103,9 +121,6 @@ Health check verifies:
 Install example:
 
 ```bash
-sudo cp packages/drone-dock-agent/systemd/drone-dock-agent.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable drone-dock-agent
-sudo systemctl start drone-dock-agent
-sudo systemctl status drone-dock-agent
+sudo unspace install --api-key ysk_KEY --yard-id YARD_1 --dock-id DOCK_42
+sudo unspace status
 ```

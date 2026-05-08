@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 drone-dock-agent = "drone_dock_agent.agent:main"
+unspace = "drone_dock_agent.cli:main"
 
 [build-system]
 requires = ["hatchling"]

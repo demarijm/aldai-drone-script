@@ -2,6 +2,7 @@
   "config_version": 1,
   "api_base_url": "https://api.unspace.com",
   "yard_id": "00000000-0000-0000-0000-000000000000",
+  "dock_id": "DOCK_42",
   "watch_directory": "/var/lib/drone-dock/uploads",
   "mission_name_prefix": "Hextronics Dock",
   "include_extensions": [

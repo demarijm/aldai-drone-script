@@ -49,6 +49,7 @@ class AgentConfig:
     api_base_url: str
     api_key: str
     yard_id: str
+    dock_id: str
     watch_directory: Path
     mission_name_prefix: str
     include_extensions: tuple[str, ...]
@@ -130,6 +131,9 @@ class UnspaceAPIClient:
             "annotated_video": self._config.annotated_video,
             "multi_track": self._config.multi_track,
         }
+
+        if self._config.dock_id:
+            payload["metadata"]["dock_id"] = self._config.dock_id
 
         if track_group := mission_metadata.get("track_group_designator"):
             payload["track_group"] = track_group
@@ -369,6 +373,7 @@ def load_config() -> AgentConfig:
         api_base_url=str(raw_config["api_base_url"]).rstrip("/"),
         api_key=token,
         yard_id=str(raw_config["yard_id"]).strip(),
+        dock_id=str(raw_config.get("dock_id", "")).strip(),
         watch_directory=Path(str(raw_config["watch_directory"])).expanduser().resolve(),
         mission_name_prefix=str(raw_config.get("mission_name_prefix", "Hextronics Dock")),
         include_extensions=tuple(f".{str(value).lower().lstrip('.')}" for value in include_extensions),
