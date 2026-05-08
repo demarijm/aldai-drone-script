@@ -8,13 +8,15 @@ import mimetypes
 import os
 import sys
 import time
+from base64 import b64decode
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import urlparse
 
 import requests
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -25,6 +27,19 @@ DEFAULT_CONFIG_PATH = Path("./drone-dock-agent.config.json")
 
 UPLOAD_URL_PATH = "/api/v1/videos/upload-url"
 INGEST_MISSION_PATH = "/api/v1/videos/ingest-mission"
+STARTUP_TEST_VIDEO_STEM = "unspace-startup-upload-test"
+STARTUP_TEST_METADATA = {
+    "source": "hextronics-drone-dock",
+    "kmz_found": False,
+    "startup_upload_test": True,
+    "duration_seconds": 1,
+}
+# Minimal ISO-BMFF/MP4 fixture with a one-second movie duration in mvhd.
+STARTUP_TEST_MP4_BASE64 = (
+    "AAAAIGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAGxtb292AAAARG12aGQAAAAA"
+    "AAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAA"
+    "AAAAABAAAAAAAAAAAAAAAAAQAACAAACAAABAAABAAABAAAAAAAAAAA="
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +60,8 @@ class AgentConfig:
     heartbeat_file: Path
     heartbeat_interval_seconds: int
     heartbeat_max_age_seconds: int
+    startup_test_upload_enabled: bool | Literal["auto"]
+    startup_test_upload_required: bool
 
 
 @dataclass(frozen=True)
@@ -144,14 +161,22 @@ class FileProcessor:
         self._config = config
         self._api_client = api_client
 
-    def process(self, file_path: Path) -> None:
+    def process(
+        self,
+        file_path: Path,
+        *,
+        mission_metadata: dict[str, Any] | None = None,
+        mission_name: str | None = None,
+    ) -> None:
         if file_path.suffix.lower() not in self._config.include_extensions:
             logger.info("Skipping unsupported file extension: %s", file_path)
             return
 
         self._wait_until_file_stable(file_path)
-        mission_metadata = _load_mission_metadata(file_path)
-        mission_name = _build_mission_name(self._config.mission_name_prefix, file_path, mission_metadata)
+        mission_metadata = mission_metadata or _load_mission_metadata(file_path)
+        mission_name = mission_name or _build_mission_name(
+            self._config.mission_name_prefix, file_path, mission_metadata
+        )
 
         logger.info("Processing %s with mission metadata %s", file_path, mission_metadata)
 
@@ -355,7 +380,17 @@ def load_config() -> AgentConfig:
         heartbeat_file=Path(str(raw_config.get("heartbeat_file", "/tmp/drone-dock-agent.heartbeat"))),
         heartbeat_interval_seconds=int(raw_config.get("heartbeat_interval_seconds", 15)),
         heartbeat_max_age_seconds=int(raw_config.get("heartbeat_max_age_seconds", 120)),
+        startup_test_upload_enabled=_parse_startup_test_upload_enabled(
+            raw_config.get("startup_test_upload_enabled", "auto")
+        ),
+        startup_test_upload_required=_to_bool(raw_config.get("startup_test_upload_required", False)),
     )
+
+
+def _parse_startup_test_upload_enabled(value: Any) -> bool | Literal["auto"]:
+    if isinstance(value, str) and value.strip().lower() == "auto":
+        return "auto"
+    return _to_bool(value)
 
 
 def _to_bool(value: Any) -> bool:
@@ -364,6 +399,33 @@ def _to_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "on"}
     return bool(value)
+
+
+def should_run_startup_test_upload(config: AgentConfig) -> bool:
+    if config.startup_test_upload_enabled != "auto":
+        return config.startup_test_upload_enabled
+
+    host = (urlparse(config.api_base_url).hostname or "").lower()
+    return host in {"localhost", "127.0.0.1"} or (
+        host.endswith("unspace.com") and host != "api.unspace.com"
+    )
+
+
+def write_startup_test_video(video_path: Path) -> None:
+    video_path.write_bytes(b64decode(STARTUP_TEST_MP4_BASE64))
+
+
+def run_startup_test_upload(processor: FileProcessor, config: AgentConfig) -> None:
+    video_path = config.watch_directory / f"{STARTUP_TEST_VIDEO_STEM}-{int(time.time())}.mp4"
+    write_startup_test_video(video_path)
+    try:
+        processor.process(
+            video_path,
+            mission_metadata=dict(STARTUP_TEST_METADATA),
+            mission_name=f"{config.mission_name_prefix} - startup upload test",
+        )
+    finally:
+        video_path.unlink(missing_ok=True)
 
 
 class HeartbeatWriter:
@@ -433,6 +495,17 @@ def main() -> None:
 
     api_client = UnspaceAPIClient(config)
     processor = FileProcessor(config=config, api_client=api_client)
+
+    if should_run_startup_test_upload(config):
+        logger.info("Running startup upload test with one-second MP4 fixture")
+        if config.startup_test_upload_required:
+            run_startup_test_upload(processor=processor, config=config)
+        else:
+            try:
+                run_startup_test_upload(processor=processor, config=config)
+            except Exception:
+                logger.exception("Startup upload test failed; continuing because it is not required")
+
     watcher = DirectoryWatcher(watch_directory=config.watch_directory, processor=processor)
     watcher.run_forever()
 

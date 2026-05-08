@@ -62,6 +62,19 @@ Config schema version is enforced via `config_version` and currently supports `1
 drone-dock-agent
 ```
 
+
+## Startup upload test for Unspace test setups
+
+On startup, the agent can run a smoke test that sends a generated 1-second `.mp4` through the same upload-url, S3 upload, and ingest-mission flow used for drone videos. This is controlled by:
+
+- `startup_test_upload_enabled`: `auto`, `true`, or `false`
+  - `auto` runs the startup upload test for local endpoints and non-production `*.unspace.com` API hosts, but skips `https://api.unspace.com`.
+  - `true` always runs the test at startup.
+  - `false` disables it.
+- `startup_test_upload_required`: when `true`, a failed startup upload test exits the agent; when `false`, the agent logs the failure and continues watching.
+
+The generated fixture is written temporarily to the watch directory with an `unspace-startup-upload-test-*.mp4` filename, uploaded with metadata flag `startup_upload_test: true`, and removed after the test attempt.
+
 ## Notes for Raspberry Pi
 
 - Run this process under `systemd` for automatic restart on boot.
