@@ -2,9 +2,15 @@
   "config_version": 1,
   "api_base_url": "https://api.unspace.com",
   "yard_id": "00000000-0000-0000-0000-000000000000",
+  "dock_id": "DOCK_42",
   "watch_directory": "/var/lib/drone-dock/uploads",
   "mission_name_prefix": "Hextronics Dock",
-  "include_extensions": [".mp4", ".mov", ".mkv", ".avi"],
+  "include_extensions": [
+    ".mp4",
+    ".mov",
+    ".mkv",
+    ".avi"
+  ],
   "stable_check_interval_seconds": 1.0,
   "stable_required_checks": 3,
   "model_type": "coupler_genie",
@@ -13,5 +19,7 @@
   "heartbeat_file": "/tmp/drone-dock-agent.heartbeat",
   "heartbeat_interval_seconds": 15,
   "heartbeat_max_age_seconds": 120,
-  "api_key": ""
+  "api_key": "",
+  "startup_test_upload_enabled": "auto",
+  "startup_test_upload_required": false
 }

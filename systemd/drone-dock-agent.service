@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=railgenie
-Group=railgenie
+User=unspace
+Group=unspace
 WorkingDirectory=/opt/unspace/drone-dock-agent
 Environment=DRONE_DOCK_CONFIG_PATH=/etc/unspace/drone-dock-agent.config.json
 Environment=PYTHONUNBUFFERED=1
