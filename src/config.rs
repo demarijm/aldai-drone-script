@@ -1,4 +1,4 @@
-use crate::{CONFIG_VERSION, DEFAULT_CONFIG_PATH, UPLOAD_DIR};
+use crate::{CONFIG_VERSION, DEFAULT_CONFIG_PATH, DEFAULT_HEARTBEAT_FILE, UPLOAD_DIR};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -27,7 +27,7 @@ impl Default for AgentConfig {
             api_key: String::new(),
             dock_id: String::new(),
             watch_dir: PathBuf::from(UPLOAD_DIR),
-            heartbeat_file: PathBuf::from("/tmp/unspace.heartbeat"),
+            heartbeat_file: PathBuf::from(DEFAULT_HEARTBEAT_FILE),
             heartbeat_interval_secs: 15,
             heartbeat_max_age_secs: 120,
         }

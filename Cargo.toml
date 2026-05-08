@@ -1,7 +1,15 @@
 [package]
-name = "unspace"
+name = "unspace-dock"
 version = "0.1.0"
 edition = "2024"
+
+[[bin]]
+name = "unspace-dock"
+path = "src/main.rs"
+
+[lib]
+name = "unspace_dock"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0"

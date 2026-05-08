@@ -1,4 +1,4 @@
-use unspace::cli;
+use unspace_dock::cli;
 
 fn main() {
     cli::init_logging("info");
