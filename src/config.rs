@@ -12,7 +12,6 @@ pub struct AgentConfig {
     pub api_base_url: String,
     #[serde(default)]
     pub api_key: String,
-    pub yard_id: String,
     pub dock_id: String,
     pub watch_dir: PathBuf,
     pub heartbeat_file: PathBuf,
@@ -26,7 +25,6 @@ impl Default for AgentConfig {
             config_version: CONFIG_VERSION,
             api_base_url: "https://api.unspace.com".to_string(),
             api_key: String::new(),
-            yard_id: String::new(),
             dock_id: String::new(),
             watch_dir: PathBuf::from(UPLOAD_DIR),
             heartbeat_file: PathBuf::from("/tmp/unspace.heartbeat"),
@@ -37,10 +35,9 @@ impl Default for AgentConfig {
 }
 
 impl AgentConfig {
-    pub fn initial(api_key: String, yard_id: String, dock_id: String) -> Self {
+    pub fn initial(api_key: String, dock_id: String) -> Self {
         Self {
             api_key,
-            yard_id,
             dock_id,
             ..Self::default()
         }
@@ -61,9 +58,6 @@ impl AgentConfig {
         self.api_base_url = self.api_base_url.trim_end_matches('/').to_string();
         if self.api_base_url.is_empty() {
             bail!("api_base_url is required");
-        }
-        if self.yard_id.trim().is_empty() {
-            bail!("yard_id is required");
         }
         if self.dock_id.trim().is_empty() {
             bail!("dock_id is required");
@@ -135,7 +129,6 @@ pub fn apply_config_value(config: &mut AgentConfig, key: &str, value: &str) -> R
     match key {
         "api_base_url" => config.api_base_url = value.to_string(),
         "api_key" => config.api_key = value.to_string(),
-        "yard_id" => config.yard_id = value.to_string(),
         "dock_id" => config.dock_id = value.to_string(),
         "watch_dir" => config.watch_dir = PathBuf::from(value),
         "heartbeat_file" => config.heartbeat_file = PathBuf::from(value),
@@ -160,11 +153,7 @@ mod tests {
     use std::fs;
 
     fn valid_config() -> AgentConfig {
-        AgentConfig::initial(
-            "ysk_test".to_string(),
-            "yard".to_string(),
-            "dock".to_string(),
-        )
+        AgentConfig::initial("ysk_test".to_string(), "dock".to_string())
     }
 
     #[test]

@@ -46,8 +46,6 @@ struct InstallArgs {
     #[arg(long)]
     api_key: String,
     #[arg(long)]
-    yard_id: String,
-    #[arg(long)]
     dock_id: String,
     #[arg(long, default_value = DEFAULT_CONFIG_PATH)]
     config_path: PathBuf,
@@ -80,7 +78,6 @@ fn run_from(cli: Cli) -> Result<()> {
     match cli.command {
         CommandKind::Install(args) => service::install(InstallOptions {
             api_key: args.api_key,
-            yard_id: args.yard_id,
             dock_id: args.dock_id,
             config_path: args.config_path,
         }),

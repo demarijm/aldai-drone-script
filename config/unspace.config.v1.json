@@ -2,7 +2,6 @@
   "config_version": 1,
   "api_base_url": "https://api.unspace.com",
   "api_key": "",
-  "yard_id": "",
   "dock_id": "",
   "watch_dir": "/var/lib/unspace/uploads",
   "heartbeat_file": "/tmp/unspace.heartbeat",

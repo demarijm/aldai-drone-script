@@ -16,13 +16,12 @@ use tracing::{info, warn};
 #[derive(Clone, Debug)]
 pub struct InstallOptions {
     pub api_key: String,
-    pub yard_id: String,
     pub dock_id: String,
     pub config_path: PathBuf,
 }
 
 pub fn install(options: InstallOptions) -> Result<()> {
-    let mut config = AgentConfig::initial(options.api_key, options.yard_id, options.dock_id);
+    let mut config = AgentConfig::initial(options.api_key, options.dock_id);
     config.validate()?;
     write_config(&options.config_path, &config)?;
 

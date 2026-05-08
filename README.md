@@ -12,7 +12,7 @@
 - `config show` redacts the API key.
 - `config set <key> <value>` validates and writes the config, then sends `SIGHUP` to `/var/run/unspace.pid` when the service is running.
 - `watch` writes `/var/run/unspace.pid`, writes the local heartbeat file, catches `SIGHUP`, and reloads the currently used config without restarting.
-- `install` writes the initial config from `--api-key`, `--yard-id`, and `--dock-id`, creates Unspace working directories, writes a hardened systemd unit, and starts the service.
+- `install` writes the initial config from `--api-key` and `--dock-id`, creates Unspace working directories, writes a hardened systemd unit, and starts the service.
 - `healthcheck` validates the watch directory, heartbeat freshness, and API `/health` reachability.
 - Tag-push CI builds a stripped ARM64 Linux musl binary for the dock hardware.
 
@@ -65,7 +65,6 @@ Example config:
   "config_version": 1,
   "api_base_url": "https://api.unspace.com",
   "api_key": "",
-  "yard_id": "YARD_1",
   "dock_id": "DOCK_42",
   "watch_dir": "/var/lib/unspace/uploads",
   "heartbeat_file": "/tmp/unspace.heartbeat",
@@ -78,7 +77,7 @@ Example config:
 
 ```bash
 unspace --version
-unspace install --api-key ysk_KEY --yard-id YARD_1 --dock-id DOCK_42
+unspace install --api-key ysk_KEY --dock-id DOCK_42
 unspace config show
 unspace config set watch_dir /mnt/drone-footage
 unspace healthcheck
@@ -88,4 +87,4 @@ unspace logs
 
 ## Notes
 
-The config intentionally contains only fields used by the current scaffold: API identity, watch directory, and local heartbeat/healthcheck settings. Upload pipeline fields such as video extension filters, mission naming, model options, queue limits, and polling intervals will be added when those features are implemented. The `update` command is intentionally scaffolded and returns a clear not-implemented error rather than silently doing partial work.
+The config intentionally contains only fields used by the current scaffold: API/dock identity, watch directory, and local heartbeat/healthcheck settings. Upload pipeline fields such as video extension filters, mission naming, model options, queue limits, and polling intervals will be added when those features are implemented. The `update` command is intentionally scaffolded and returns a clear not-implemented error rather than silently doing partial work.

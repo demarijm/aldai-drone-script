@@ -80,7 +80,6 @@ mod tests {
     ) -> AgentConfig {
         AgentConfig {
             api_key: "ysk_test".to_string(),
-            yard_id: "yard".to_string(),
             dock_id: "dock".to_string(),
             watch_dir: watch_dir.to_path_buf(),
             heartbeat_file: heartbeat_file.to_path_buf(),
