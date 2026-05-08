@@ -1,6 +1,6 @@
 # unspace
 
-`unspace` is a Rust CLI foundation for the Unspace drone dock ingest agent. It is intended to run 24/7 on Ubuntu/Raspberry Pi docks, manage a versioned config file, run as a hardened systemd service, and provide the command surface needed for video ingest work.
+`unspace` is a Rust CLI foundation for the Unspace drone dock ingest agent. It is intended to run 24/7 on ARM64 Linux drone docks, manage a versioned config file, run as a hardened systemd service, and provide the command surface needed for video ingest work.
 
 ## Implemented foundation
 
@@ -14,7 +14,7 @@
 - `watch` writes `/var/run/unspace.pid`, writes the local heartbeat file, catches `SIGHUP`, and reloads the currently used config without restarting.
 - `install` writes the initial config from `--api-key`, `--yard-id`, and `--dock-id`, creates Unspace working directories, writes a hardened systemd unit, and starts the service.
 - `healthcheck` validates the watch directory, heartbeat freshness, and API `/health` reachability.
-- Tag-push CI builds stripped Linux musl binaries for x86_64 and aarch64.
+- Tag-push CI builds a stripped ARM64 Linux musl binary for the dock hardware.
 
 The previous Python prototype is still present under `src/drone_dock_agent/` for reference while the Rust CLI is built out.
 
@@ -23,6 +23,7 @@ The previous Python prototype is still present under `src/drone_dock_agent/` for
 ```bash
 cargo test
 cargo build --release
+# Release CI builds the dock target: aarch64-unknown-linux-musl
 ```
 
 ## Configuration
